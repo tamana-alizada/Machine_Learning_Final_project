@@ -1,0 +1,4 @@
+age_years,gender,gender_code,weight_kg,drug_name,drug_role,active_ingredients,reactions,previous_allergic_reactions,has_previous_allergy,is_serious
+35,female,1,65,aspirin,suspect,acetylsalicylic acid,rash itching swelling,rash,1,0
+51,male,2,82,ibuprofen,suspect,ibuprofen,nausea headache,none,0,0
+27,unknown,0,59,amoxicillin,suspect,amoxicillin,hives rash breathing difficulty,hives,1,1

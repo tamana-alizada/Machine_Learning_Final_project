@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+mlruns/
+.venv/
+env/
+*.log
+.DS_Store
+
+# optional generated outputs
+model_cv_results.csv
+model_test_metrics.csv
+model_validation_comparison.csv
+mlflow_run_info.json

@@ -1,0 +1,13 @@
+{
+  "age_years": 35,
+  "gender": "female",
+  "gender_code": 1,
+  "weight_kg": 65,
+  "drug_name": "aspirin",
+  "drug_role": "suspect",
+  "active_ingredients": "acetylsalicylic acid",
+  "reactions": "rash itching swelling",
+  "previous_allergic_reactions": "rash",
+  "has_previous_allergy": 1,
+  "is_serious": 0
+}
