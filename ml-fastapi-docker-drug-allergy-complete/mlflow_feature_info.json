@@ -1,0 +1,19 @@
+{
+  "numeric_features": [
+    "age_years",
+    "weight_kg",
+    "gender_code",
+    "has_previous_allergy",
+    "is_serious"
+  ],
+  "categorical_features": [
+    "gender",
+    "drug_role",
+    "previous_allergic_reactions"
+  ],
+  "text_features": [
+    "drug_name",
+    "active_ingredients",
+    "reactions"
+  ]
+}

@@ -23,6 +23,7 @@ Output:
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 import joblib
@@ -56,6 +57,8 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 RANDOM_STATE = 42
 TARGET = "allergic_to_drug"
 USE_REACTION_FEATURES = True
+MLFLOW_EXPERIMENT_NAME = "Drug Allergy ML Pipeline"
+REGISTERED_MODEL_NAME = "DrugAllergyRiskModel"
 
 
 # -----------------------------------------------------------------------------
@@ -330,6 +333,114 @@ def tune_threshold(y_true, y_prob, min_recall: float = 0.80) -> tuple[float, pd.
 
 
 # -----------------------------------------------------------------------------
+# MLflow logging and model registry
+# -----------------------------------------------------------------------------
+
+def _log_numeric_metrics(prefix: str, metrics: dict) -> None:
+    """Log only finite numeric values to MLflow."""
+    import mlflow
+
+    for key, value in metrics.items():
+        if isinstance(value, (int, float, np.integer, np.floating)):
+            value = float(value)
+            if np.isfinite(value):
+                mlflow.log_metric(f"{prefix}_{key}", value)
+
+
+def log_to_mlflow(
+    *,
+    final_model,
+    output_path: str,
+    best_model_name: str,
+    best_threshold: float,
+    test_metrics: dict,
+    validation_results: pd.DataFrame,
+    numeric_features: list[str],
+    categorical_features: list[str],
+    text_features: list[str],
+    tracking_uri: str,
+    experiment_name: str,
+    registered_model_name: str,
+) -> None:
+    """Log the run to MLflow and register the final model."""
+    try:
+        import mlflow
+        import mlflow.sklearn
+    except ImportError:
+        print("\nMLflow is not installed. Install requirements.txt or run with --skip-mlflow.")
+        return
+
+    mlflow.set_tracking_uri(tracking_uri)
+    mlflow.set_experiment(experiment_name)
+
+    artifact_files = [
+        output_path,
+        "model_validation_comparison.csv",
+        "model_cv_results.csv",
+        "model_test_metrics.csv",
+    ]
+
+    with mlflow.start_run(run_name=best_model_name) as run:
+        run_id = run.info.run_id
+
+        mlflow.log_param("target", TARGET)
+        mlflow.log_param("best_model_name", best_model_name)
+        mlflow.log_param("best_threshold", best_threshold)
+        mlflow.log_param("use_reaction_features", USE_REACTION_FEATURES)
+        mlflow.log_param("registered_model_name", registered_model_name)
+        mlflow.set_tag("project", "drug_allergy_prediction")
+        mlflow.set_tag("model_purpose", "high_recall_allergy_risk_screening")
+        mlflow.set_tag("decision_threshold", str(best_threshold))
+
+        _log_numeric_metrics("test", test_metrics)
+        best_val_row = validation_results[validation_results["model"] == best_model_name].iloc[0].to_dict()
+        _log_numeric_metrics("validation", best_val_row)
+
+        feature_info = {
+            "numeric_features": numeric_features,
+            "categorical_features": categorical_features,
+            "text_features": text_features,
+        }
+        feature_info_path = Path("mlflow_feature_info.json")
+        feature_info_path.write_text(json.dumps(feature_info, indent=2), encoding="utf-8")
+        mlflow.log_artifact(str(feature_info_path))
+
+        for file_path in artifact_files:
+            path = Path(file_path)
+            if path.exists():
+                mlflow.log_artifact(str(path))
+
+        # This line registers the trained model in MLflow Model Registry.
+        model_info = mlflow.sklearn.log_model(
+            sk_model=final_model,
+            artifact_path="model",
+            registered_model_name=registered_model_name,
+        )
+
+        registered_version = getattr(model_info, "registered_model_version", None)
+        model_uri = f"runs:/{run_id}/model"
+        run_info = {
+            "tracking_uri": tracking_uri,
+            "experiment_name": experiment_name,
+            "run_id": run_id,
+            "model_uri": model_uri,
+            "registered_model_name": registered_model_name,
+            "registered_version": registered_version,
+        }
+        Path("mlflow_run_info.json").write_text(json.dumps(run_info, indent=2), encoding="utf-8")
+        mlflow.log_artifact("mlflow_run_info.json")
+
+        print("\nMLflow logging complete.")
+        print(f"Tracking URI: {tracking_uri}")
+        print(f"Experiment: {experiment_name}")
+        print(f"Run ID: {run_id}")
+        print(f"Model URI: {model_uri}")
+        print(f"Registered model: {registered_model_name}")
+        if registered_version is not None:
+            print(f"Registered version: {registered_version}")
+
+
+# -----------------------------------------------------------------------------
 # Main training workflow
 # -----------------------------------------------------------------------------
 
@@ -344,6 +455,26 @@ def main() -> None:
         "--output",
         default="model.joblib",
         help="Output joblib path used by FastAPI. Default: model.joblib",
+    )
+    parser.add_argument(
+        "--skip-mlflow",
+        action="store_true",
+        help="Train and save files, but do not log/register the model in MLflow.",
+    )
+    parser.add_argument(
+        "--tracking-uri",
+        default="file:./mlruns",
+        help="MLflow tracking URI. Default: file:./mlruns",
+    )
+    parser.add_argument(
+        "--experiment-name",
+        default=MLFLOW_EXPERIMENT_NAME,
+        help=f"MLflow experiment name. Default: {MLFLOW_EXPERIMENT_NAME}",
+    )
+    parser.add_argument(
+        "--registered-model-name",
+        default=REGISTERED_MODEL_NAME,
+        help=f"MLflow registered model name. Default: {REGISTERED_MODEL_NAME}",
     )
     args = parser.parse_args()
 
@@ -506,6 +637,25 @@ def main() -> None:
     print("Saved: model_validation_comparison.csv")
     print("Saved: model_cv_results.csv")
     print("Saved: model_test_metrics.csv")
+
+
+    if args.skip_mlflow:
+        print("\nSkipped MLflow logging because --skip-mlflow was used.")
+    else:
+        log_to_mlflow(
+            final_model=final_model,
+            output_path=args.output,
+            best_model_name=best_model_name,
+            best_threshold=best_threshold,
+            test_metrics=test_metrics,
+            validation_results=validation_results,
+            numeric_features=numeric_features,
+            categorical_features=categorical_features,
+            text_features=text_features,
+            tracking_uri=args.tracking_uri,
+            experiment_name=args.experiment_name,
+            registered_model_name=args.registered_model_name,
+        )
 
 
 if __name__ == "__main__":

@@ -47,7 +47,7 @@ class PredictionResponse(BaseModel):
 
 
 app = FastAPI(
-    title="Drug Allergy Prediction API",
+    title="Personalized Drug Allergy Prediction API",
     description="FastAPI service that loads a saved joblib ML model and returns allergy-risk predictions with explanations.",
     version="2.0.0",
 )
